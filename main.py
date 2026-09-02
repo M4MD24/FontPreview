@@ -1,4 +1,5 @@
 import os
+import sys
 import glob
 import math
 from PIL import Image, ImageDraw, ImageFont
@@ -19,7 +20,7 @@ def generate_high_resolution_font_preview(
         cell_width=800,
         cell_height=250
 ):
-    # 1. Collect all font files (.ttf and .otf) from the folder
+    # 1. Collect all font files (.ttf and .otf)
     font_extensions = ["*.ttf", "*.otf"]
     font_files = []
     for extension in font_extensions:
@@ -34,7 +35,7 @@ def generate_high_resolution_font_preview(
 
     print(f"✅ Found {len(font_files)} font(s). Generating preview...")
 
-    # 2. Calculate the grid layout (rows and columns)
+    # 2. Calculate grid layout
     num_fonts = len(font_files)
     rows = math.ceil(num_fonts / columns)
 
@@ -59,7 +60,7 @@ def generate_high_resolution_font_preview(
         # Get the font file name
         font_name = os.path.basename(font_path)
 
-        # Draw the cell border (this clearly shows the columns)
+        # Draw cell border
         draw.rectangle(
             [x, y, x + cell_width, y + cell_height],
             outline=grid_color,
@@ -76,10 +77,10 @@ def generate_high_resolution_font_preview(
             except:
                 small_font = ImageFont.load_default()
 
-            # Draw the filename at the top of the cell
+            # Draw the filename at the top
             draw.text((x + 15, y + 10), font_name, font=small_font, fill=title_color)
 
-            # Draw the sample text in the middle of the cell
+            # Draw the sample text in the middle
             text_y = y + int(cell_height * 0.45)
             draw.text((x + 15, text_y), sample_text, font=font, fill=text_preview_color)
 
@@ -88,10 +89,10 @@ def generate_high_resolution_font_preview(
             default_font = ImageFont.load_default()
             draw.text((x + 15, y + 15), f"Error: {font_name}", font=default_font, fill=(255, 0, 0))
 
-    # 5. Save the image with high DPI
+    # 5. Save the high-resolution image
     try:
         image.save(output_file, dpi=(dpi, dpi), quality=100)
-        print(f"🎉 High-resolution preview saved successfully to: {output_file}")
+        print(f"🎉 Saved successfully to: {output_file}")
         print(f"📐 Dimensions: {image_width}×{image_height} pixels, {dpi} DPI")
         image.show()
     except Exception as e:
@@ -99,7 +100,19 @@ def generate_high_resolution_font_preview(
 
 
 if __name__ == "__main__":
-    folder = input("📁 Please enter the full path to the folder containing your fonts: ").strip()
+    # Read Script Parameters (for PyCharm / command line)
+    # sys.argv[0] = script name
+    # sys.argv[1] = folder path (required)
+
+    folder = None
+
+    # Check if parameters were passed via PyCharm or command line
+    if len(sys.argv) > 1:
+        folder = sys.argv[1]
+        print(f"ℹ️  Using Script Parameter for folder: {folder}")
+    else:
+        # Fallback: ask the user interactively if no parameters are provided
+        folder = input("📁 Please enter the full path to the folder containing your fonts: ").strip()
 
     # If the user leaves it blank, use the system default font folder
     if not folder:
