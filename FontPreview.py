@@ -19,12 +19,13 @@ def generate_high_resolution_font_preview(
         grid_color=(70, 70, 70),
         padding=20,
         cell_width=700,
-        cell_height=700,
+        cell_height=500,
         title_font_path=None,
         title_font_size=30,
         scale=4.0,
-        title_vertical_offset=-120,
-        preview_vertical_offset=-120
+        title_vertical_offset=-80,
+        preview_vertical_offset=-80,
+        line_spacing=20
 ):
     # Apply scaling to all dimensional parameters
     actual_font_size = int(font_size * scale)
@@ -35,6 +36,11 @@ def generate_high_resolution_font_preview(
     actual_dpi = int(dpi * scale)
     actual_title_vertical_offset = int(title_vertical_offset * scale)
     actual_preview_vertical_offset = int(preview_vertical_offset * scale)
+    # If line_spacing not provided, default to 4 pixels (scaled)
+    if line_spacing is None:
+        actual_line_spacing = int(4 * scale)
+    else:
+        actual_line_spacing = int(line_spacing * scale)
 
     print(f"🔍 Scale factor: {scale}")
     print(f"   Effective font size: {actual_font_size}")
@@ -42,6 +48,7 @@ def generate_high_resolution_font_preview(
     print(f"   Effective DPI: {actual_dpi}")
     print(f"   Title vertical offset: {actual_title_vertical_offset}")
     print(f"   Preview vertical offset: {actual_preview_vertical_offset}")
+    print(f"   Line spacing: {actual_line_spacing}")
 
     # Collect fonts from folder if not provided directly
     if font_files is None:
@@ -85,6 +92,11 @@ def generate_high_resolution_font_preview(
     image = Image.new("RGB", (image_width, image_height), background_color)
     draw = ImageDraw.Draw(image)
 
+    # Split the sample text into separate lines
+    sample_lines = sample_text.split('\n')
+    # Remove any empty lines if you wish, but keep them as is to preserve layout
+    # sample_lines = [line for line in sample_lines if line != '']   # optional
+
     # Render each font in its grid cell
     for idx, font_path in enumerate(font_files):
         row = idx // columns
@@ -116,12 +128,39 @@ def generate_high_resolution_font_preview(
             draw.text((name_cx, name_cy), font_name, font=name_font,
                       fill=title_color, anchor='mm')
 
-            # ---------- Center the sample text in the bottom half ----------
-            sample_bbox = draw.multiline_textbbox((0, 0), sample_text, font=font, spacing=4)
-            sample_cx = x + actual_cell_width / 2
-            sample_cy = y + 3 * actual_cell_height / 4 + actual_preview_vertical_offset  # apply offset
-            draw.multiline_text((sample_cx, sample_cy), sample_text, font=font,
-                                fill=text_preview_color, anchor='mm', spacing=4)
+            # ---------- Draw each line of the sample text separately, centered in the bottom half ----------
+            # Compute total block height and positions
+            if sample_lines:
+                # Get bounding boxes for each line
+                line_bboxes = []
+                line_heights = []
+                for line in sample_lines:
+                    bbox = draw.textbbox((0, 0), line, font=font)
+                    line_bboxes.append(bbox)
+                    line_heights.append(bbox[3] - bbox[1])
+
+                # Total height including spacing
+                total_block_height = sum(line_heights) + (len(sample_lines) - 1) * actual_line_spacing
+                # Target vertical center of the preview block (with offset)
+                target_center_y = y + 3 * actual_cell_height / 4 + actual_preview_vertical_offset
+                # Start y for the first line's middle anchor
+                y_start = target_center_y - total_block_height / 2
+
+                # Draw each line
+                current_y = y_start
+                for i, line in enumerate(sample_lines):
+                    # Compute middle y of this line
+                    line_height = line_heights[i]
+                    line_mid_y = current_y + line_height / 2
+                    # Center horizontally
+                    line_cx = x + actual_cell_width / 2
+                    draw.text((line_cx, line_mid_y), line, font=font,
+                              fill=text_preview_color, anchor='mm')
+                    # Move down for next line
+                    current_y += line_height + actual_line_spacing
+            else:
+                # If no lines, do nothing
+                pass
 
         except Exception as e:
             print(f"⚠️  Error loading font: {font_path} - {e}")
