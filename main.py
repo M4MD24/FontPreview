@@ -6,9 +6,10 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 def generate_high_resolution_font_preview(
-        folder_path,
-        output_file="fonts_preview_hd.png",
-        sample_text="Hello World 123 العربية",
+        folder_path=None,
+        font_files=None,
+        output_file="font_preview.png",
+        sample_text="العربية\n٠١٢٣٤٥٦٧٨٩\n0123456789\nEnglish",
         font_size=60,
         columns=3,
         dpi=300,
@@ -16,26 +17,28 @@ def generate_high_resolution_font_preview(
         text_preview_color=(255, 255, 255),
         title_color=(150, 150, 150),
         grid_color=(70, 70, 70),
-        padding=50,
-        cell_width=800,
-        cell_height=250
+        padding=10,
+        cell_width=600,
+        cell_height=800
 ):
-    # 1. Collect all font files (.ttf and .otf)
-    font_extensions = ["*.ttf", "*.otf"]
-    font_files = []
-    for extension in font_extensions:
-        font_files.extend(glob.glob(os.path.join(folder_path, extension)))
-        font_files.extend(glob.glob(os.path.join(folder_path, extension.upper())))
-
-    font_files = sorted(list(set(font_files)))
+    # Collect fonts from folder if not provided directly
+    if font_files is None:
+        if folder_path is None:
+            raise ValueError("You must provide either folder_path or font_files")
+        font_extensions = ["*.ttf", "*.otf"]
+        font_files = []
+        for ext in font_extensions:
+            font_files.extend(glob.glob(os.path.join(folder_path, ext)))
+            font_files.extend(glob.glob(os.path.join(folder_path, ext.upper())))
+        font_files = sorted(list(set(font_files)))
 
     if not font_files:
-        print(f"❌ No fonts (.ttf, .otf) found in folder: {folder_path}")
+        print(f"❌ No fonts (.ttf, .otf) found in the specified path.")
         return
 
     print(f"✅ Found {len(font_files)} font(s). Generating preview...")
 
-    # 2. Calculate grid layout
+    # Calculate grid dimensions
     num_fonts = len(font_files)
     rows = math.ceil(num_fonts / columns)
 
@@ -44,43 +47,27 @@ def generate_high_resolution_font_preview(
 
     print(f"📐 Grid: {rows} rows × {columns} columns")
 
-    # 3. Create the blank canvas
     image = Image.new("RGB", (image_width, image_height), background_color)
     draw = ImageDraw.Draw(image)
 
-    # 4. Render each font inside its grid cell
+    # Render each font in its grid cell
     for idx, font_path in enumerate(font_files):
         row = idx // columns
         col = idx % columns
-
-        # Calculate the top-left corner of the current cell
         x = padding + col * cell_width
         y = padding + row * cell_height
-
-        # Get the font file name
         font_name = os.path.basename(font_path)
 
-        # Draw cell border
-        draw.rectangle(
-            [x, y, x + cell_width, y + cell_height],
-            outline=grid_color,
-            width=2
-        )
+        draw.rectangle([x, y, x + cell_width, y + cell_height], outline=grid_color, width=2)
 
         try:
-            # Load the main font
             font = ImageFont.truetype(font_path, font_size)
-
-            # Load a smaller version for the filename label
             try:
                 small_font = ImageFont.truetype(font_path, int(font_size * 0.4))
             except:
                 small_font = ImageFont.load_default()
 
-            # Draw the filename at the top
             draw.text((x + 15, y + 10), font_name, font=small_font, fill=title_color)
-
-            # Draw the sample text in the middle
             text_y = y + int(cell_height * 0.45)
             draw.text((x + 15, text_y), sample_text, font=font, fill=text_preview_color)
 
@@ -89,53 +76,69 @@ def generate_high_resolution_font_preview(
             default_font = ImageFont.load_default()
             draw.text((x + 15, y + 15), f"Error: {font_name}", font=default_font, fill=(255, 0, 0))
 
-    # 5. Save the high-resolution image
+    # Save the final image with high DPI
     try:
         image.save(output_file, dpi=(dpi, dpi), quality=100)
         print(f"🎉 Saved successfully to: {output_file}")
         print(f"📐 Dimensions: {image_width}×{image_height} pixels, {dpi} DPI")
-        image.show()
     except Exception as e:
         print(f"❌ Failed to save image: {e}")
 
 
+# Walk through subfolders and generate a preview image for each folder containing fonts
+def generate_previews_for_subfolders(root_folder, output_dir=None, **kwargs):
+    if output_dir is None:
+        output_dir = root_folder
+    os.makedirs(output_dir, exist_ok=True)
+
+    for root, dirs, files in os.walk(root_folder):
+        font_files = [os.path.join(root, f) for f in files if f.lower().endswith(('.ttf', '.otf'))]
+        if font_files:
+            folder_name = os.path.basename(root) or "root"
+            output_file = os.path.join(output_dir, f"fonts_preview_{folder_name}.png")
+            print(f"\n📁 Processing folder: {root} ({len(font_files)} fonts found)")
+            generate_high_resolution_font_preview(
+                font_files=font_files,
+                output_file=output_file,
+                **kwargs
+            )
+
+
 if __name__ == "__main__":
-    # Read Script Parameters (for PyCharm / command line)
-    # sys.argv[0] = script name
-    # sys.argv[1] = folder path (required)
+    # Parse CLI args: arg1 = root path, arg2 = optional output dir
+    root_folder = None
+    output_dir = None
 
-    folder = None
-
-    # Check if parameters were passed via PyCharm or command line
     if len(sys.argv) > 1:
-        folder = sys.argv[1]
-        print(f"ℹ️  Using Script Parameter for folder: {folder}")
+        root_folder = sys.argv[1]
+        print(f"ℹ️  Using root path from argument: {root_folder}")
+        if len(sys.argv) > 2:
+            output_dir = os.path.abspath(sys.argv[2])
+            print(f"ℹ️  Output directory: {output_dir}")
+        else:
+            print("ℹ️  No output directory specified. Images will be saved inside the root folder.")
     else:
-        # Fallback: ask the user interactively if no parameters are provided
-        folder = input("📁 Please enter the full path to the folder containing your fonts: ").strip()
+        # Interactive mode with fallback to system default font directories
+        root_folder = input("📁 Enter the full path to the root folder containing your font subfolders: ").strip()
+        if not root_folder:
+            import platform
 
-    # If the user leaves it blank, use the system default font folder
-    if not folder:
-        import platform
+            if platform.system() == "Windows":
+                root_folder = "C:/Windows/Fonts"
+            elif platform.system() == "Darwin":  # macOS
+                root_folder = "/Library/Fonts"
+            else:  # Linux
+                root_folder = "/usr/share/fonts/truetype"
+            print(f"ℹ️  Using default system path: {root_folder}")
 
-        if platform.system() == "Windows":
-            folder = "C:/Windows/Fonts"
-        elif platform.system() == "Darwin":  # macOS
-            folder = "/Library/Fonts"
-        else:  # Linux
-            folder = "/usr/share/fonts/truetype"
-        print(f"ℹ️  Using default system path: {folder}")
+        out = input("📁 (Optional) Folder to save output images (press Enter to use the root folder): ").strip()
+        if out:
+            output_dir = os.path.abspath(out)
 
-    if not os.path.isdir(folder):
-        print(f"❌ Folder does not exist: {folder}")
+    if not os.path.isdir(root_folder):
+        print(f"❌ Folder does not exist: {root_folder}")
     else:
-        generate_high_resolution_font_preview(
-            folder_path=folder,
-            output_file="my_hd_fonts_preview.png",
-            sample_text="Hello World 123 العربية",
-            font_size=60,
-            columns=3,
-            dpi=300,
-            cell_width=800,
-            cell_height=250
+        generate_previews_for_subfolders(
+            root_folder=root_folder,
+            output_dir=output_dir
         )
