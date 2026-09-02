@@ -11,15 +11,17 @@ def generate_high_resolution_font_preview(
         output_file="font_preview.png",
         sample_text="العربية\n٠١٢٣٤٥٦٧٨٩\n0123456789\nEnglish",
         font_size=60,
-        columns=3,
+        columns=4,
         dpi=300,
         background_color=(40, 40, 40),
         text_preview_color=(255, 255, 255),
         title_color=(150, 150, 150),
         grid_color=(70, 70, 70),
-        padding=10,
+        padding=20,
         cell_width=600,
-        cell_height=800
+        cell_height=500,
+        title_font_path=None,
+        title_font_size=30
 ):
     # Collect fonts from folder if not provided directly
     if font_files is None:
@@ -38,7 +40,24 @@ def generate_high_resolution_font_preview(
 
     print(f"✅ Found {len(font_files)} font(s). Generating preview...")
 
-    # Calculate grid dimensions
+    # Determine the size for font names
+    if title_font_size is None:
+        title_font_size = int(font_size * 0.4)  # default: 40% of sample text size
+    else:
+        title_font_size = int(title_font_size)
+
+    # Load the unified title font (if provided) – used only for name rendering
+    title_font = None
+    if title_font_path and os.path.isfile(title_font_path):
+        try:
+            title_font = ImageFont.truetype(title_font_path, title_font_size)
+        except Exception as e:
+            print(f"⚠️  Could not load title font: {e}. Using default.")
+            title_font = ImageFont.load_default()
+    else:
+        title_font = ImageFont.load_default()
+
+    # Calculate grid dimensions (no extra space for top titles)
     num_fonts = len(font_files)
     rows = math.ceil(num_fonts / columns)
 
@@ -46,6 +65,7 @@ def generate_high_resolution_font_preview(
     image_height = rows * cell_height + padding * 2
 
     print(f"📐 Grid: {rows} rows × {columns} columns")
+    print(f"🔤 Name font size: {title_font_size}")
 
     image = Image.new("RGB", (image_width, image_height), background_color)
     draw = ImageDraw.Draw(image)
@@ -58,16 +78,24 @@ def generate_high_resolution_font_preview(
         y = padding + row * cell_height
         font_name = os.path.basename(font_path)
 
+        # Draw cell border
         draw.rectangle([x, y, x + cell_width, y + cell_height], outline=grid_color, width=2)
 
         try:
             font = ImageFont.truetype(font_path, font_size)
-            try:
-                small_font = ImageFont.truetype(font_path, int(font_size * 0.4))
-            except:
-                small_font = ImageFont.load_default()
 
-            draw.text((x + 15, y + 10), font_name, font=small_font, fill=title_color)
+            # Render the font name using the unified font (or fallback)
+            try:
+                if title_font_path and os.path.isfile(title_font_path):
+                    name_font = ImageFont.truetype(title_font_path, title_font_size)
+                else:
+                    name_font = ImageFont.truetype(font_path, title_font_size)
+            except:
+                name_font = ImageFont.load_default()
+
+            draw.text((x + 15, y + 10), font_name, font=name_font, fill=title_color)
+
+            # Render the sample text using the current font
             text_y = y + int(cell_height * 0.45)
             draw.text((x + 15, text_y), sample_text, font=font, fill=text_preview_color)
 
@@ -76,7 +104,7 @@ def generate_high_resolution_font_preview(
             default_font = ImageFont.load_default()
             draw.text((x + 15, y + 15), f"Error: {font_name}", font=default_font, fill=(255, 0, 0))
 
-    # Save the final image with high DPI
+    # Save the final image
     try:
         image.save(output_file, dpi=(dpi, dpi), quality=100)
         print(f"🎉 Saved successfully to: {output_file}")
@@ -85,7 +113,6 @@ def generate_high_resolution_font_preview(
         print(f"❌ Failed to save image: {e}")
 
 
-# Walk through subfolders and generate a preview image for each folder containing fonts
 def generate_previews_for_subfolders(root_folder, output_dir=None, **kwargs):
     if output_dir is None:
         output_dir = root_folder
@@ -105,9 +132,13 @@ def generate_previews_for_subfolders(root_folder, output_dir=None, **kwargs):
 
 
 if __name__ == "__main__":
-    # Parse CLI args: arg1 = root path, arg2 = optional output dir
+    # CLI Arguments:
+    # argv[1] = root_folder (required)
+    # argv[2] = output_dir (optional)
+    # argv[3] = title_font_path (optional) – path to the unified font for names
     root_folder = None
     output_dir = None
+    title_font_path = None
 
     if len(sys.argv) > 1:
         root_folder = sys.argv[1]
@@ -115,8 +146,9 @@ if __name__ == "__main__":
         if len(sys.argv) > 2:
             output_dir = os.path.abspath(sys.argv[2])
             print(f"ℹ️  Output directory: {output_dir}")
-        else:
-            print("ℹ️  No output directory specified. Images will be saved inside the root folder.")
+        if len(sys.argv) > 3:
+            title_font_path = sys.argv[3]
+            print(f"ℹ️  Title font path: {title_font_path}")
     else:
         # Interactive mode with fallback to system default font directories
         root_folder = input("📁 Enter the full path to the root folder containing your font subfolders: ").strip()
@@ -135,10 +167,17 @@ if __name__ == "__main__":
         if out:
             output_dir = os.path.abspath(out)
 
+        title_font = input("🖋️  (Optional) Full path to a font file for displaying font names only (press Enter to skip): ").strip()
+        if title_font and os.path.isfile(title_font):
+            title_font_path = title_font
+        else:
+            title_font_path = None
+
     if not os.path.isdir(root_folder):
         print(f"❌ Folder does not exist: {root_folder}")
     else:
         generate_previews_for_subfolders(
             root_folder=root_folder,
-            output_dir=output_dir
+            output_dir=output_dir,
+            title_font_path=title_font_path
         )
