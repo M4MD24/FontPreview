@@ -11,17 +11,18 @@ def generate_high_resolution_font_preview(
         output_file="font_preview.png",
         sample_text="العربية\n٠١٢٣٤٥٦٧٨٩\n0123456789\nEnglish",
         font_size=60,
-        columns=4,
+        columns=10,
         dpi=300,
         background_color=(40, 40, 40),
         text_preview_color=(255, 255, 255),
         title_color=(150, 150, 150),
         grid_color=(70, 70, 70),
         padding=20,
-        cell_width=600,
+        cell_width=700,
         cell_height=500,
         title_font_path=None,
-        title_font_size=30
+        title_font_size=30,
+        gap_between_title_and_preview=80
 ):
     # Collect fonts from folder if not provided directly
     if font_files is None:
@@ -66,6 +67,7 @@ def generate_high_resolution_font_preview(
 
     print(f"📐 Grid: {rows} rows × {columns} columns")
     print(f"🔤 Name font size: {title_font_size}")
+    print(f"📏 Gap between title and preview text: {gap_between_title_and_preview} pixels")
 
     image = Image.new("RGB", (image_width, image_height), background_color)
     draw = ImageDraw.Draw(image)
@@ -95,8 +97,9 @@ def generate_high_resolution_font_preview(
 
             draw.text((x + 15, y + 10), font_name, font=name_font, fill=title_color)
 
-            # Render the sample text using the current font
-            text_y = y + int(cell_height * 0.45)
+            # Render the sample text.
+            # The position is controlled by gap_between_title_and_preview from the top of the cell.
+            text_y = y + gap_between_title_and_preview
             draw.text((x + 15, text_y), sample_text, font=font, fill=text_preview_color)
 
         except Exception as e:
