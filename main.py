@@ -19,11 +19,12 @@ def generate_high_resolution_font_preview(
         grid_color=(70, 70, 70),
         padding=20,
         cell_width=700,
-        cell_height=500,
+        cell_height=700,
         title_font_path=None,
         title_font_size=30,
-        gap_between_title_and_preview=80,
-        scale=5.0
+        scale=4.0,
+        title_vertical_offset=-120,
+        preview_vertical_offset=-120
 ):
     # Apply scaling to all dimensional parameters
     actual_font_size = int(font_size * scale)
@@ -31,16 +32,16 @@ def generate_high_resolution_font_preview(
     actual_cell_width = int(cell_width * scale)
     actual_cell_height = int(cell_height * scale)
     actual_padding = int(padding * scale)
-    actual_gap = int(gap_between_title_and_preview * scale)
     actual_dpi = int(dpi * scale)
-    # Fixed offsets for the font name inside the cell (originally 15, 10)
-    name_offset_x = int(15 * scale)
-    name_offset_y = int(10 * scale)
+    actual_title_vertical_offset = int(title_vertical_offset * scale)
+    actual_preview_vertical_offset = int(preview_vertical_offset * scale)
 
     print(f"🔍 Scale factor: {scale}")
     print(f"   Effective font size: {actual_font_size}")
     print(f"   Effective cell size: {actual_cell_width}x{actual_cell_height}")
     print(f"   Effective DPI: {actual_dpi}")
+    print(f"   Title vertical offset: {actual_title_vertical_offset}")
+    print(f"   Preview vertical offset: {actual_preview_vertical_offset}")
 
     # Collect fonts from folder if not provided directly
     if font_files is None:
@@ -79,7 +80,6 @@ def generate_high_resolution_font_preview(
 
     print(f"📐 Grid: {rows} rows × {columns} columns")
     print(f"🔤 Name font size: {actual_title_font_size}")
-    print(f"📏 Gap between title and preview text: {actual_gap} pixels")
     print(f"📏 Final image dimensions: {image_width}×{image_height} pixels")
 
     image = Image.new("RGB", (image_width, image_height), background_color)
@@ -100,7 +100,7 @@ def generate_high_resolution_font_preview(
         try:
             font = ImageFont.truetype(font_path, actual_font_size)
 
-            # Render the font name using the unified font (or fallback)
+            # Choose the font for the name (use unified font if provided, else the font itself)
             try:
                 if title_font_path and os.path.isfile(title_font_path):
                     name_font = ImageFont.truetype(title_font_path, actual_title_font_size or 30)
@@ -109,20 +109,25 @@ def generate_high_resolution_font_preview(
             except:
                 name_font = ImageFont.load_default()
 
-            draw.text((x + name_offset_x, y + name_offset_y),
-                      font_name, font=name_font, fill=title_color)
+            # ---------- Center the font name in the top half of the cell ----------
+            name_bbox = draw.textbbox((0, 0), font_name, font=name_font)
+            name_cx = x + actual_cell_width / 2
+            name_cy = y + actual_cell_height / 4 + actual_title_vertical_offset  # apply offset
+            draw.text((name_cx, name_cy), font_name, font=name_font,
+                      fill=title_color, anchor='mm')
 
-            # Render the sample text.
-            # Position is controlled by actual_gap from the top of the cell.
-            text_y = y + actual_gap
-            draw.text((x + name_offset_x, text_y),
-                      sample_text, font=font, fill=text_preview_color)
+            # ---------- Center the sample text in the bottom half ----------
+            sample_bbox = draw.multiline_textbbox((0, 0), sample_text, font=font, spacing=4)
+            sample_cx = x + actual_cell_width / 2
+            sample_cy = y + 3 * actual_cell_height / 4 + actual_preview_vertical_offset  # apply offset
+            draw.multiline_text((sample_cx, sample_cy), sample_text, font=font,
+                                fill=text_preview_color, anchor='mm', spacing=4)
 
         except Exception as e:
             print(f"⚠️  Error loading font: {font_path} - {e}")
             default_font = ImageFont.load_default()
-            draw.text((x + name_offset_x, y + name_offset_y),
-                      f"Error: {font_name}", font=default_font, fill=(255, 0, 0))
+            draw.text((x + 10, y + 10), f"Error: {font_name}",
+                      font=default_font, fill=(255, 0, 0))
 
     # Save the final image with scaled DPI
     try:
