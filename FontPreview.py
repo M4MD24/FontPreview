@@ -2,17 +2,31 @@ import os
 import sys
 import glob
 import math
+import unicodedata
 from PIL import Image, ImageDraw, ImageFont
+
 
 # ----------------------------------------------------------------------
 # Check for RAQM (modern shaping) support
 # ----------------------------------------------------------------------
-RAQM_AVAILABLE = False
-try:
-    if hasattr(ImageFont, "LAYOUT_RAQM"):
-        RAQM_AVAILABLE = True
-except AttributeError:
-    pass
+def _detect_raqm_support():
+    """
+    Reliable RAQM detection: having the LAYOUT_RAQM constant does not mean
+    Pillow was actually built with libraqm support. We must try loading a
+    font with that layout engine and catch the failure if it's missing.
+    """
+    if not hasattr(ImageFont, "LAYOUT_RAQM"):
+        return False
+    try:
+        # Try to instantiate the freetype font engine with RAQM layout.
+        # This will raise if libraqm isn't compiled into Pillow.
+        ImageFont.FreeTypeFont(layout_engine=ImageFont.LAYOUT_RAQM)
+        return True
+    except Exception:
+        return False
+
+
+RAQM_AVAILABLE = _detect_raqm_support()
 
 # Optional BiDi fallback (used only if RAQM is not available)
 try:
@@ -21,7 +35,22 @@ try:
     BIDI_AVAILABLE = True
 except ImportError:
     BIDI_AVAILABLE = False
-    print("⚠️  'python-bidi' not installed. Fallback will not work.")
+    print("Warning: 'python-bidi' not installed. Fallback will not work.")
+
+
+def _line_is_rtl(line):
+    """
+    Determine whether a line should be drawn with RTL direction, based on
+    the first strongly-directional character it contains. This avoids
+    forcing RTL direction on lines that are actually Latin/numeric text.
+    """
+    for ch in line:
+        bidi_type = unicodedata.bidirectional(ch)
+        if bidi_type in ("R", "AL"):
+            return True
+        if bidi_type == "L":
+            return False
+    return False
 
 
 def generate_high_resolution_font_preview(
@@ -50,10 +79,16 @@ def generate_high_resolution_font_preview(
     """
     Generate a high-resolution grid preview of multiple fonts.
 
-    - If use_raqm=True and RAQM is available, Arabic is shaped correctly.
-    - Otherwise, it falls back to BiDi reordering (no reshaping) – no character loss,
-      but Arabic letters will not be joined (isolated forms).
+    - If use_raqm=True and RAQM is available, Arabic is shaped correctly,
+      and each line's direction is detected individually so Latin/numeric
+      lines are not incorrectly forced into RTL order.
+    - Otherwise, it falls back to BiDi reordering (no reshaping) - no
+      character loss, but Arabic letters will not be joined (isolated
+      forms).
     """
+    if columns <= 0:
+        raise ValueError("columns must be a positive integer")
+
     # Apply scaling
     actual_font_size = int(font_size * scale)
     actual_title_font_size = int(title_font_size * scale) if title_font_size else None
@@ -66,11 +101,11 @@ def generate_high_resolution_font_preview(
     actual_line_spacing = int((line_spacing if line_spacing is not None else 4) * scale)
 
     use_raqm_effective = RAQM_AVAILABLE and use_raqm
-    print(f"🔍 Scale: {scale} | Font size: {actual_font_size}")
+    print(f"Scale: {scale} | Font size: {actual_font_size}")
     print(f"   Cell: {actual_cell_width}x{actual_cell_height} | DPI: {actual_dpi}")
     print(f"   Using RAQM: {use_raqm_effective}")
     if not use_raqm_effective:
-        print(f"   ⚠️  Fallback: BiDi reordering only (letters won't be joined)")
+        print("   Warning: Fallback mode - BiDi reordering only (letters won't be joined)")
 
     # Collect fonts
     if font_files is None:
@@ -80,20 +115,27 @@ def generate_high_resolution_font_preview(
         for ext in ["*.ttf", "*.otf"]:
             font_files.extend(glob.glob(os.path.join(folder_path, ext)))
             font_files.extend(glob.glob(os.path.join(folder_path, ext.upper())))
-        font_files = sorted(set(font_files))
+        # De-duplicate case-insensitively (some filesystems are case-insensitive,
+        # so "Font.ttf" and "font.ttf" could otherwise both be collected).
+        seen = {}
+        for f in font_files:
+            key = os.path.normcase(os.path.abspath(f))
+            seen.setdefault(key, f)
+        font_files = sorted(seen.values())
 
     if not font_files:
-        print("❌ No fonts found.")
+        print("No fonts found.")
         return
 
-    print(f"✅ Found {len(font_files)} fonts.")
+    print(f"Found {len(font_files)} fonts.")
 
     # Load title font
     title_font = None
     if title_font_path and os.path.isfile(title_font_path):
         try:
             title_font = ImageFont.truetype(title_font_path, actual_title_font_size or 30)
-        except Exception:
+        except OSError as e:
+            print(f"Warning: could not load title font '{title_font_path}': {e}")
             title_font = ImageFont.load_default()
     else:
         title_font = ImageFont.load_default()
@@ -101,18 +143,26 @@ def generate_high_resolution_font_preview(
     rows = math.ceil(len(font_files) / columns)
     image_width = columns * actual_cell_width + actual_padding * 2
     image_height = rows * actual_cell_height + actual_padding * 2
-    print(f"📐 Grid: {rows}×{columns} | Image: {image_width}×{image_height}")
+    print(f"Grid: {rows}x{columns} | Image: {image_width}x{image_height}")
 
     image = Image.new("RGB", (image_width, image_height), background_color)
     draw = ImageDraw.Draw(image)
 
     sample_lines = sample_text.split('\n')
 
-    # ---- Pre‑process for fallback (BiDi only, NO reshaping) ----
+    # Pre-compute per-line direction once (same for every font, since it
+    # depends only on the sample text content, not the font itself).
+    line_is_rtl = [_line_is_rtl(line) for line in sample_lines]
+
+    # ---- Pre-process for fallback (BiDi only, NO reshaping) ----
     if not use_raqm_effective and BIDI_AVAILABLE:
         fallback_lines = [get_display(line) for line in sample_lines]
     else:
-        fallback_lines = sample_lines[:]  # fallback if no bidi
+        fallback_lines = sample_lines[:]
+
+    # Cache name fonts per font file to avoid reloading in a way that
+    # depends on title_font_path (loaded once above) vs per-font fallback.
+    name_font_cache = {}
 
     for idx, font_path in enumerate(font_files):
         row = idx // columns
@@ -133,17 +183,21 @@ def generate_high_resolution_font_preview(
             else:
                 font = ImageFont.truetype(font_path, actual_font_size)
 
-            # Name font
-            try:
-                if title_font_path and os.path.isfile(title_font_path):
-                    name_font = ImageFont.truetype(title_font_path, actual_title_font_size or 30)
-                else:
-                    name_font = ImageFont.truetype(font_path, actual_title_font_size or 30)
-            except:
-                name_font = ImageFont.load_default()
+            # Name font (use title_font_path if given, else fall back to
+            # the font itself; cache per font_path to avoid reloading).
+            if font_path in name_font_cache:
+                name_font = name_font_cache[font_path]
+            else:
+                try:
+                    if title_font_path and os.path.isfile(title_font_path):
+                        name_font = ImageFont.truetype(title_font_path, actual_title_font_size or 30)
+                    else:
+                        name_font = ImageFont.truetype(font_path, actual_title_font_size or 30)
+                except OSError:
+                    name_font = ImageFont.load_default()
+                name_font_cache[font_path] = name_font
 
             # Draw font name (centered)
-            name_bbox = draw.textbbox((0, 0), font_name, font=name_font)
             name_cx = x + actual_cell_width / 2
             name_cy = y + actual_cell_height / 4 + actual_title_vertical_offset
             draw.text((name_cx, name_cy), font_name, font=name_font,
@@ -151,16 +205,13 @@ def generate_high_resolution_font_preview(
 
             # Draw preview lines (centered)
             if sample_lines:
-                # Choose the text to draw
-                if use_raqm_effective:
-                    texts = sample_lines
-                else:
-                    texts = fallback_lines
+                texts = sample_lines if use_raqm_effective else fallback_lines
 
                 line_heights = []
-                for line in texts:
+                for i, line in enumerate(texts):
                     if use_raqm_effective:
-                        bbox = draw.textbbox((0, 0), line, font=font, direction='rtl')
+                        direction = 'rtl' if line_is_rtl[i] else 'ltr'
+                        bbox = draw.textbbox((0, 0), line, font=font, direction=direction)
                     else:
                         bbox = draw.textbbox((0, 0), line, font=font)
                     line_heights.append(bbox[3] - bbox[1])
@@ -175,8 +226,9 @@ def generate_high_resolution_font_preview(
                     line_cx = x + actual_cell_width / 2
 
                     if use_raqm_effective:
+                        direction = 'rtl' if line_is_rtl[i] else 'ltr'
                         draw.text((line_cx, line_mid_y), line, font=font,
-                                  fill=text_preview_color, anchor='mm', direction='rtl')
+                                  fill=text_preview_color, anchor='mm', direction=direction)
                     else:
                         draw.text((line_cx, line_mid_y), line, font=font,
                                   fill=text_preview_color, anchor='mm')
@@ -184,17 +236,18 @@ def generate_high_resolution_font_preview(
                     current_y += line_heights[i] + actual_line_spacing
 
         except Exception as e:
-            print(f"⚠️  Error with {font_path}: {e}")
+            print(f"Error rendering {font_path}: {e}")
             default_font = ImageFont.load_default()
             draw.text((x + 10, y + 10), f"Error: {font_name}",
                       font=default_font, fill=(255, 0, 0))
 
-    # Save
+    # Save (quality is a JPEG-only parameter and is intentionally omitted
+    # here since we always save PNG output).
     try:
-        image.save(output_file, dpi=(actual_dpi, actual_dpi), quality=100)
-        print(f"🎉 Saved: {output_file}")
+        image.save(output_file, dpi=(actual_dpi, actual_dpi))
+        print(f"Saved: {output_file}")
     except Exception as e:
-        print(f"❌ Save failed: {e}")
+        print(f"Save failed: {e}")
 
 
 def generate_previews_for_subfolders(root_folder, output_dir=None, **kwargs):
@@ -207,7 +260,7 @@ def generate_previews_for_subfolders(root_folder, output_dir=None, **kwargs):
         if font_files:
             folder_name = os.path.basename(root) or "root"
             output_file = os.path.join(output_dir, f"fonts_preview_{folder_name}.png")
-            print(f"\n📁 Processing: {root} ({len(font_files)} fonts)")
+            print(f"\nProcessing: {root} ({len(font_files)} fonts)")
             generate_high_resolution_font_preview(
                 font_files=font_files,
                 output_file=output_file,
@@ -227,7 +280,7 @@ if __name__ == "__main__":
         if len(sys.argv) > 3:
             title_font_path = sys.argv[3]
     else:
-        root_folder = input("📁 Enter fonts folder: ").strip()
+        root_folder = input("Enter fonts folder: ").strip()
         if not root_folder:
             import platform
 
@@ -237,15 +290,15 @@ if __name__ == "__main__":
                 root_folder = "/Library/Fonts"
             else:
                 root_folder = "/usr/share/fonts/truetype"
-        out = input("📁 Output folder (Enter for same): ").strip()
+        out = input("Output folder (Enter for same): ").strip()
         if out:
             output_dir = os.path.abspath(out)
-        title_font = input("🖋️  Title font path (optional): ").strip()
+        title_font = input("Title font path (optional): ").strip()
         if title_font and os.path.isfile(title_font):
             title_font_path = title_font
 
     if not os.path.isdir(root_folder):
-        print(f"❌ Folder not found: {root_folder}")
+        print(f"Folder not found: {root_folder}")
     else:
         generate_previews_for_subfolders(
             root_folder=root_folder,
