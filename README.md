@@ -39,12 +39,14 @@ The recommended setup uses **Conda** to install Pillow together with `libraqm`.
 
 ### Recommended Environment
 
-* Python 3.11
-* Conda
-* Pillow
-* `libraqm`
-* `fontTools`
-* `python-bidi`
+* Python 3.14
+    * pip 26.2.1
+        * Pillow 12.3.0
+        * fontTools 4.64.0
+        * python-bidi 0.6.11
+    * conda 26.7.1
+        * libraqm 0.11.0
+        * Pillow 12.3.0
 
 ### Install Miniconda
 
