@@ -33,7 +33,7 @@ Arabic text is rendered using Pillow's native complex-text layout support when a
 * Use `libraqm` for native complex-text layout when available.
 * Use `python-bidi` as fallback support for Arabic text rendering when native layout is unavailable.
 
-## Requirements
+## Current Requirements
 
 The recommended setup uses **Conda** to install Pillow together with `libraqm`.
 
