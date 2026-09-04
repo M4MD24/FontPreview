@@ -149,6 +149,10 @@ def generate_high_resolution_font_preview(
 
     print(f"Found {len(font_files)} fonts.")
 
+    # Determine the effective number of columns:
+    # if we have fewer fonts than the requested columns, use the exact count.
+    effective_columns = min(columns, len(font_files))
+
     if title_font_path and os.path.isfile(title_font_path):
         try:
             title_font = ImageFont.truetype(
@@ -164,10 +168,10 @@ def generate_high_resolution_font_preview(
     else:
         title_font = None
 
-    rows = math.ceil(len(font_files) / columns)
+    rows = math.ceil(len(font_files) / effective_columns)
 
     image_width = (
-            columns * actual_cell_width
+            effective_columns * actual_cell_width
             + actual_padding * 2
     )
 
@@ -177,7 +181,7 @@ def generate_high_resolution_font_preview(
     )
 
     print(
-        f"Grid: {rows}x{columns} | "
+        f"Grid: {rows}x{effective_columns} (requested columns: {columns}) | "
         f"Image: {image_width}x{image_height}"
     )
 
@@ -192,8 +196,8 @@ def generate_high_resolution_font_preview(
     name_font_cache = {}
 
     for index, font_path in enumerate(font_files):
-        row = index // columns
-        column = index % columns
+        row = index // effective_columns
+        column = index % effective_columns
 
         x = (
                 actual_padding
@@ -316,11 +320,11 @@ def generate_high_resolution_font_preview(
                         - total_height / 2
                 )
 
-                for index, item in enumerate(sample_text):
+                for idx, item in enumerate(sample_text):
                     text = item["text"]
                     is_rtl = item["is_rtl"]
 
-                    line_height = line_heights[index]
+                    line_height = line_heights[idx]
 
                     line_center_y = (
                             current_y
