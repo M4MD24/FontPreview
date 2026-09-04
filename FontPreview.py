@@ -44,7 +44,7 @@ def generate_high_resolution_font_preview(
     if sample_text is None:
         sample_text = [
             {
-                "text": "اللغة العربية الفصحى",
+                "text": "اللغة العربية",
                 "is_rtl": True
             },
             {
@@ -56,7 +56,7 @@ def generate_high_resolution_font_preview(
                 "is_rtl": True
             },
             {
-                "text": "United States English",
+                "text": "English Language",
                 "is_rtl": False
             }
         ]
@@ -506,31 +506,10 @@ def main():
         )
         return
 
-    sample_text = [
-        {
-            "text": "اللغة العربية",
-            "is_rtl": True
-        },
-        {
-            "text": "٠١٢٣٤٥٦٧٨٩",
-            "is_rtl": True
-        },
-        {
-            "text": "0123456789",
-            "is_rtl": True
-        },
-        {
-            "text": "English Language",
-            "is_rtl": False
-        }
-    ]
-
     generate_previews_for_subfolders(
         root_folder=root_folder,
         output_dir=output_dir,
-        sample_text=sample_text,
-        title_font_path=title_font_path,
-        use_raqm=True
+        title_font_path=title_font_path
     )
 
 
