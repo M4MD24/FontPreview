@@ -20,6 +20,7 @@ Arabic text is rendered using Pillow's native complex-text layout support when a
 * Display the font name below each preview frame.
 * Generate high-resolution PNG images.
 * Configure the number of columns.
+* Automatically adjust the effective number of columns when fewer fonts are available than requested.
 * Configure frame width and height.
 * Configure DPI.
 * Configure padding and border width.
@@ -95,7 +96,7 @@ pip install fontTools python-bidi
 Run the following command inside the activated Conda environment:
 
 ```powershell
-python -c "from PIL import features; print('Using RAQM:', features.check('raqm'))"
+python -c "from PIL import features; print('Using RAQM:', features.check_feature('raqm'))"
 ```
 
 The expected output is:
@@ -135,10 +136,10 @@ The program can also be used through its graphical interface to select:
 Each font is tested using the following texts in this exact order:
 
 ```text
-اللغة العربية الفصحى
+اللغة العربية
 ٠١٢٣٤٥٦٧٨٩
 0123456789
-United States English
+English Language
 ```
 
 The Arabic text is rendered using native complex-text layout when available. This allows Arabic letters to connect correctly and appear in their proper positions.
@@ -159,6 +160,10 @@ Each font is displayed in its own frame, with:
 
 Multiple fonts are arranged into equally sized columns and rows.
 
+The program automatically adjusts the effective number of columns when the number of available fonts is smaller than the requested number of columns. This prevents empty columns from being included in the generated preview image.
+
+For example, if the requested number of columns is `10` but only `3` fonts are available, the preview uses `3` columns instead of `10`.
+
 Preview images are generated according to the selected folder structure, allowing fonts from different subfolders to be organized separately.
 
 ## How It Works
@@ -176,12 +181,13 @@ Preview images are generated according to the selected folder structure, allowin
 11. Renders the English digits.
 12. Renders the English preview text.
 13. Calculates the required dimensions for each font preview.
-14. Creates an equally sized frame for each font.
-15. Places the preview text inside the frame.
-16. Displays the font name below the frame.
-17. Arranges all font frames into rows and columns.
-18. Generates the final high-resolution PNG image.
-19. Saves the generated previews according to the folder structure.
+14. Determines the effective number of columns based on the number of available fonts.
+15. Creates an equally sized frame for each font.
+16. Places the preview text inside the frame.
+17. Displays the font name below the frame.
+18. Arranges all font frames into rows and columns.
+19. Generates the final high-resolution PNG image.
+20. Saves the generated previews according to the folder structure.
 
 ## Notes
 
@@ -190,5 +196,7 @@ The quality of Arabic rendering depends on the capabilities of the installed Pil
 When available, `libraqm` provides proper complex-text layout for Arabic and other scripts. Installing Pillow and `libraqm` together from `conda-forge` is the recommended setup for reliable Arabic rendering.
 
 `python-bidi` is retained as fallback support for bidirectional text handling when native complex-text layout is unavailable.
+
+The number of columns is automatically adjusted to match the number of available fonts when fewer fonts are found than requested.
 
 The original font files are never modified by the preview generation process.
